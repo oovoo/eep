@@ -310,20 +310,20 @@ save_kcachegrind_format(FileName) ->
             file:close(IOD),
             file:close(IOD2),
             io:format("done~n", []);
-        {error, Reason} ->
+        {error, Reason} = Err ->
             io:format("Error: can't create file ~p: ~p~n", [RealFileName, Reason]),
-            error(problem)
+            Err
     end.
 
 save_receive_cycle(IOD, P, MinTime, MaxTime, StartTime, Buffer, Stuck, ProcessTable) ->
     receive
         status when Stuck >= 2 ->
-            working_stat(P, MinTime, max(MinTime, MaxTime), StartTime),
+            working_stat(P, MinTime, erlang:max(MinTime, MaxTime), StartTime),
             io:format("No end_of_trace and no data, finishing forcibly (~b processes)~n", [ets:info(ProcessTable, size)]),
             ets:foldl(fun({_, Child}, _) -> Child ! finalize end, nothing, ProcessTable),
             save_receive_cycle(IOD, P, MinTime, MaxTime, StartTime, Buffer, Stuck + 1, ProcessTable);
         status ->
-            working_stat(P, MinTime, max(MinTime, MaxTime), StartTime),
+            working_stat(P, MinTime, erlang:max(MinTime, MaxTime), StartTime),
             save_receive_cycle(IOD, P, MinTime, MaxTime, StartTime, Buffer, Stuck + 1, ProcessTable);
         {bytes, Bytes, TS} ->
             NewBuffer = case size(Buffer) of
@@ -335,8 +335,8 @@ save_receive_cycle(IOD, P, MinTime, MaxTime, StartTime, Buffer, Stuck, ProcessTa
             save_receive_cycle(IOD, P, MinTime, MaxTime, StartTime, Buffer, Stuck, NewProcessTable);
         {finalize, Pid, MinTime1, MaxTime1} ->
             ets:delete(ProcessTable, Pid),
-            Minimum = min(MinTime, MinTime1),
-            Maximum = max(MaxTime, MaxTime1),
+            Minimum = erlang:min(MinTime, MinTime1),
+            Maximum = erlang:max(MaxTime, MaxTime1),
             case ets:info(ProcessTable, size) of
                 0 ->
                     file:write(IOD, Buffer),
@@ -375,7 +375,7 @@ pid_item_to_bytes({Pid, #cvn_item{mfa = {M, F, A}, self = Self, subcalls = SubCa
 working_stat(Msgs, MinTime, MaxTime, StartTime) ->
     io:format("~b msgs (~b msgs/sec), ~f secs (~bx slowdown)~n",
               [Msgs, round(Msgs / (td(StartTime, os:timestamp()) / 1000000)),
-               td(MinTime, MaxTime) / 1000000, round(td(StartTime, os:timestamp()) / max(td(MinTime, MaxTime), 1))]).
+               td(MinTime, MaxTime) / 1000000, round(td(StartTime, os:timestamp()) / erlang:max(td(MinTime, MaxTime), 1))]).
 
 save_header(IOD, GTD) ->
     Block4 = io_lib:format("events: Time~n"
@@ -389,14 +389,14 @@ save_copy(From, To) ->
         {ok, Data} ->
             case file:write(To, Data) of
                 ok -> save_copy(From, To);
-                {error, Reason} ->
+                {error, Reason} = Err ->
                     io:format("Error: can't save results: ~p~n", [Reason]),
-                    error(problem)
+                    Err
             end;
         eof -> done;
-        {error, Reason} ->
+        {error, Reason} = Err ->
             io:format("Error: can't save results: ~p~n", [Reason]),
-            error(problem)
+            Err
     end.
 
 ts({Mega, Secs, Micro}) -> (Mega * 1000000000000) + (Secs * 1000000) + Micro;
